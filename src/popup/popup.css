@@ -547,6 +547,24 @@ p {
 .gp-seconds { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--subtle); }
 .gp-seconds input { width: 60px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; }
 
+/* 捕获中:醒目横幅 + 按钮高亮 */
+.gp-capturing {
+  padding: 10px 12px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: #9f184a;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.6;
+  animation: gp-pulse 1s ease-in-out infinite;
+}
+.gp-capturing small { font-weight: 400; color: var(--subtle); }
+@keyframes gp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.gp-bind.capturing { box-shadow: 0 0 0 2px #ffd0dc; }
+.gp-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 2px; }
+
 /* —— 提取预览里的游戏/账号选择，复用主页 chip 风格 —— */
 .field-block {
   display: grid;

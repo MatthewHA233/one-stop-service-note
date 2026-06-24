@@ -34,8 +34,10 @@ let modal = ''
 let renameTarget = null
 let pendingConfirm = null
 let extracted = { bvid: '', info: null, loading: false, error: '', expanded: false }
-let gp = DEFAULT_GP // 手柄/键盘遥控配置
+let gp = DEFAULT_GP // 手柄/键盘遥控配置(已保存)
+let gpDraft = null // 配置草稿(打开面板时复制,点保存才写回 gp)
 let gpCapture = null // 正在捕获重绑:{ action, device }
+let gpMsg = '' // 配置面板内的提示文字
 let currentPlaying = { bvid: '', page: 1, videoId: '' }
 let hydratingUpFaces = false
 const hydratedBvids = new Set()
@@ -539,99 +541,115 @@ async function loadGamepadConfig() {
   return { ...DEFAULT_GP, ...(r.osn_gamepad || {}) }
 }
 
-async function saveGp() {
-  await chrome.storage.local.set({ osn_gamepad: gp })
-  render()
-}
-
 function sendBg(msg) {
   return new Promise(resolve => {
     chrome.runtime.sendMessage(msg, resp => { void chrome.runtime.lastError; resolve(resp) })
   })
 }
 
+function vkName(vk) {
+  if (VK_NAMES[vk]) return VK_NAMES[vk]
+  if (vk >= 48 && vk <= 57) return String.fromCharCode(vk) // 0-9
+  if (vk >= 65 && vk <= 90) return String.fromCharCode(vk) // A-Z
+  if (vk >= 96 && vk <= 105) return 'Num' + (vk - 96) // 小键盘 0-9
+  const extra = { 32: 'Space', 13: 'Enter', 27: 'Esc', 9: 'Tab', 8: 'Backspace', 37: '←', 38: '↑', 39: '→', 40: '↓', 20: 'CapsLock', 192: '`' }
+  return extra[vk] || `键${vk}`
+}
+
 function gpBindLabel(b) {
   if (!b || !b.button) return '未绑定'
   if (b.device === 'keyboard') {
-    const vk = parseInt(String(b.button).replace('Key:', ''), 10)
-    return VK_NAMES[vk] || `键${vk}`
+    return vkName(parseInt(String(b.button).replace('Key:', ''), 10))
   }
   return BTN_NAMES[b.button] || b.button
 }
 
 function gpSeconds() {
-  const b = gp.bindings.find(x => x.action === 'rewind')
+  const d = gpDraft || gp
+  const b = d.bindings.find(x => x.action === 'rewind')
   return b && b.seconds ? b.seconds : 5
 }
 
 function renderGamepadModal() {
-  const src = gp.sources || { gamepad: true, keyboard: false }
+  const d = gpDraft || gp
+  const src = d.sources || { gamepad: true, keyboard: false }
   const rowFor = act => {
-    const padB = gp.bindings.find(b => b.action === act.key && b.device === 'gamepad')
-    const kbB = gp.bindings.find(b => b.action === act.key && b.device === 'keyboard')
-    const cap = d => (gpCapture && gpCapture.action === act.key && gpCapture.device === d ? ' capturing' : '')
+    const padB = d.bindings.find(b => b.action === act.key && b.device === 'gamepad')
+    const kbB = d.bindings.find(b => b.action === act.key && b.device === 'keyboard')
+    const cap = dev => (gpCapture && gpCapture.action === act.key && gpCapture.device === dev ? ' capturing' : '')
+    const lbl = b => `${escapeHtml(gpBindLabel(b))}${b ? ` · ${GP_TRIGGER[b.trigger] || ''}` : ''}`
     return `
       <div class="gp-row">
         <span class="gp-act">${act.label}</span>
-        <button class="gp-bind${cap('gamepad')}" data-action="gp-rebind" data-act="${act.key}" data-device="gamepad">
-          🎮 ${escapeHtml(gpBindLabel(padB))}${padB ? ` · ${GP_TRIGGER[padB.trigger] || ''}` : ''}
-        </button>
-        <button class="gp-bind${cap('keyboard')}" data-action="gp-rebind" data-act="${act.key}" data-device="keyboard">
-          ⌨ ${escapeHtml(gpBindLabel(kbB))}${kbB ? ` · ${GP_TRIGGER[kbB.trigger] || ''}` : ''}
-        </button>
+        <button class="gp-bind${cap('gamepad')}" data-action="gp-rebind" data-act="${act.key}" data-device="gamepad">🎮 ${lbl(padB)}</button>
+        <button class="gp-bind${cap('keyboard')}" data-action="gp-rebind" data-act="${act.key}" data-device="keyboard">⌨ ${lbl(kbB)}</button>
       </div>
     `
   }
+  const banner = gpCapture
+    ? `<div class="gp-capturing">⏺ 请按一下${gpCapture.device === 'keyboard' ? '键盘' : '手柄'}上要绑的键<br><small>单击 = 单击触发，快速按两下 = 双击触发</small></div>`
+    : `<p class="gp-hint">${gpMsg ? escapeHtml(gpMsg) : '点绑定按钮 → 按一下要绑的键（按两下=绑成双击）。改完点右下角「保存」。'}</p>`
   return `
-    <div class="modal-backdrop" data-action="close-modal">
+    <div class="modal-backdrop" data-action="gp-cancel">
       <div class="modal-card gp-card" role="dialog" aria-modal="true" data-stop>
         <div class="modal-head">
           <h2>🎮 手柄 / 键盘遥控</h2>
-          <button class="icon-btn" data-action="close-modal" title="关闭">×</button>
+          <button class="icon-btn" data-action="gp-cancel" title="取消">×</button>
         </div>
-        <label class="gp-toggle"><input type="checkbox" data-action="gp-enabled" ${gp.enabled ? 'checked' : ''} /> 启用遥控</label>
+        <label class="gp-toggle"><input type="checkbox" data-action="gp-enabled" ${d.enabled ? 'checked' : ''} /> 启用遥控</label>
         <div class="gp-sources">
           <span>输入源</span>
           <label><input type="checkbox" data-action="gp-source" data-device="gamepad" ${src.gamepad ? 'checked' : ''} /> 手柄</label>
           <label><input type="checkbox" data-action="gp-source" data-device="keyboard" ${src.keyboard ? 'checked' : ''} /> 键盘</label>
         </div>
-        <p class="gp-hint">${gpCapture ? `请按一下${gpCapture.device === 'keyboard' ? '键盘' : '手柄'}上要绑定的键…` : '点按钮可重绑。非 Xbox 手柄需 BetterJoy 虚拟成 Xbox，游戏里才读得到。'}</p>
+        ${banner}
         <div class="gp-rows">${GP_ACTIONS.map(rowFor).join('')}</div>
         <label class="gp-seconds">前进 / 后退秒数 <input type="number" min="1" max="120" value="${gpSeconds()}" data-action="gp-seconds" /></label>
+        <div class="gp-actions">
+          <button class="soft-btn" data-action="gp-cancel">取消</button>
+          <button class="primary-btn" data-action="gp-save">保存</button>
+        </div>
       </div>
     </div>
   `
 }
 
-async function onGamepadCaptured(msg) {
-  if (!gpCapture) return
+function onGamepadCaptured(msg) {
+  if (!gpCapture || !gpDraft) return
   const target = gpCapture
   gpCapture = null
   if (msg.device !== target.device) {
-    message = `按到的是${msg.device === 'keyboard' ? '键盘' : '手柄'}键，请重新点「绑定」再按${target.device === 'keyboard' ? '键盘' : '手柄'}的键`
+    gpMsg = `按到的是${msg.device === 'keyboard' ? '键盘' : '手柄'}键，请重新点「绑定」再按${target.device === 'keyboard' ? '键盘' : '手柄'}的键`
     render()
     return
   }
-  const ref = gp.bindings.find(b => b.action === target.action) || {}
+  const trigger = msg.trigger === 'double' ? 'double' : 'click'
+  const ref = gpDraft.bindings.find(b => b.action === target.action) || {}
   let found = false
-  const bindings = gp.bindings.map(b => {
+  const bindings = gpDraft.bindings.map(b => {
     if (b.action === target.action && b.device === target.device) {
       found = true
-      return { ...b, button: msg.button, code: msg.code || '' }
+      return { ...b, button: msg.button, code: msg.code || '', trigger }
     }
     return b
   })
   if (!found) {
-    bindings.push({ action: target.action, label: ref.label || target.action, device: target.device, button: msg.button, code: msg.code || '', trigger: 'click', seconds: ref.seconds })
+    bindings.push({ action: target.action, label: ref.label || target.action, device: target.device, button: msg.button, code: msg.code || '', trigger, seconds: ref.seconds })
   }
-  gp = { ...gp, bindings }
-  message = '已绑定'
-  await saveGp()
+  gpDraft = { ...gpDraft, bindings }
+  gpMsg = `已绑定（${trigger === 'double' ? '双击' : '单击'}）— 记得点右下角保存`
+  render()
 }
 
 chrome.runtime.onMessage.addListener(msg => {
   if (msg && msg.type === 'osn:gamepad-captured') onGamepadCaptured(msg)
 })
+
+// 捕获键盘绑定时拦截按键，避免触发 popup 自身行为（F5 刷新 / Esc 关闭 / Tab 切焦点 / Space·Enter 触发按钮）。
+// exe 用全局 GetAsyncKeyState 照样读得到，不影响绑定。
+window.addEventListener('keydown', e => {
+  if (gpCapture) { e.preventDefault(); e.stopPropagation() }
+}, true)
 
 function bindEvents() {
   app.querySelectorAll('[data-action]').forEach(el => {
@@ -679,18 +697,43 @@ function bindEvents() {
 async function handleAction(el) {
   await run(async () => {
     const action = el.dataset.action
-    if (action === 'open-gamepad') { modal = 'gamepad'; message = ''; render(); return }
-    if (action === 'gp-enabled') { gp = { ...gp, enabled: el.checked }; await saveGp(); return }
-    if (action === 'gp-source') { gp = { ...gp, sources: { ...gp.sources, [el.dataset.device]: el.checked } }; await saveGp(); return }
+    if (action === 'open-gamepad') {
+      modal = 'gamepad'
+      gpDraft = JSON.parse(JSON.stringify(gp))
+      gpCapture = null
+      gpMsg = ''
+      await sendBg({ type: 'osn:gamepad-config-mode', on: true })
+      render(); return
+    }
+    if (action === 'gp-enabled') { gpDraft = { ...gpDraft, enabled: el.checked }; render(); return }
+    if (action === 'gp-source') { gpDraft = { ...gpDraft, sources: { ...gpDraft.sources, [el.dataset.device]: el.checked } }; render(); return }
     if (action === 'gp-seconds') {
       const s = Math.max(1, Math.min(120, Number(el.value) || 5))
-      gp = { ...gp, bindings: gp.bindings.map(b => (b.action === 'rewind' || b.action === 'forward') ? { ...b, seconds: s } : b) }
-      await saveGp(); return
+      gpDraft = { ...gpDraft, bindings: gpDraft.bindings.map(b => (b.action === 'rewind' || b.action === 'forward') ? { ...b, seconds: s } : b) }
+      render(); return
     }
     if (action === 'gp-rebind') {
       gpCapture = { action: el.dataset.act, device: el.dataset.device }
-      message = ''
+      gpMsg = ''
       await sendBg({ type: 'osn:gamepad-capture-start' })
+      render(); return
+    }
+    if (action === 'gp-save') {
+      gp = gpDraft
+      gpDraft = null
+      gpCapture = null
+      await chrome.storage.local.set({ osn_gamepad: gp })
+      await sendBg({ type: 'osn:gamepad-config-mode', on: false })
+      modal = ''
+      message = '遥控设置已保存'
+      render(); return
+    }
+    if (action === 'gp-cancel') {
+      gpDraft = null
+      gpCapture = null
+      gpMsg = ''
+      await sendBg({ type: 'osn:gamepad-config-mode', on: false })
+      modal = ''
       render(); return
     }
     if (action === 'confirm-ok') {

@@ -26,6 +26,8 @@ let initialized = false
 let port = null
 let config = DEFAULT_CONFIG
 let capturing = false
+let configMode = false // 配置面板打开时暂停遥控
+let captureFirst = null // 捕获时检测双击
 const keyState = {} // 按 code 记单/双击/长按的时序状态
 
 export async function initGamepad() {
@@ -88,18 +90,25 @@ function onHostMessage(msg) {
   if (msg.type === 'ready') { sendKbConfig(); return }
   if (msg.type !== 'button') return
 
-  // 捕获模式：把「按下」回传 popup 用于绑定，不走映射
+  // 捕获模式：监听单击/双击，回传 popup 用于绑定
   if (capturing && msg.state === 'down') {
-    capturing = false
-    setCapture(false)
-    sendKbConfig()
-    chrome.runtime.sendMessage(
-      { type: 'osn:gamepad-captured', device: isKeyboardEvent(msg) ? 'keyboard' : 'gamepad', button: msg.button, code: msg.code, gamepad: msg.gamepad },
-      () => void chrome.runtime.lastError
-    )
+    const now = Date.now()
+    if (captureFirst && captureFirst.button === msg.button && captureFirst.code === msg.code && now - captureFirst.t < 350) {
+      clearTimeout(captureFirst.timer)
+      const m = captureFirst.msg
+      captureFirst = null
+      finishCapture(m, 'double')
+    } else {
+      if (captureFirst) clearTimeout(captureFirst.timer)
+      const m = msg
+      captureFirst = { button: msg.button, code: msg.code, t: now, msg: m }
+      captureFirst.timer = setTimeout(() => { captureFirst = null; finishCapture(m, 'click') }, 350)
+    }
     return
   }
 
+  // 配置模式：暂停遥控，不控制 B 站视频
+  if (configMode) return
   if (!config.enabled) return
   const kb = isKeyboardEvent(msg)
   if (kb && !(config.sources && config.sources.keyboard)) return
@@ -107,6 +116,16 @@ function onHostMessage(msg) {
 
   if (msg.state === 'down') onButtonDown(msg.button, msg.code)
   else if (msg.state === 'up') onButtonUp(msg.code)
+}
+
+function finishCapture(msg, trigger) {
+  capturing = false
+  setCapture(false)
+  sendKbConfig()
+  chrome.runtime.sendMessage(
+    { type: 'osn:gamepad-captured', device: isKeyboardEvent(msg) ? 'keyboard' : 'gamepad', button: msg.button, code: msg.code, trigger },
+    () => void chrome.runtime.lastError
+  )
 }
 
 function bindsFor(button, code) {
@@ -159,11 +178,21 @@ function fire(binding) {
 
 // 供 background 的消息处理转发（popup → background）
 export function handleGamepadCommand(msg) {
+  if (msg.type === 'osn:gamepad-config-mode') {
+    configMode = !!msg.on
+    if (!msg.on) {
+      capturing = false
+      if (captureFirst) { clearTimeout(captureFirst.timer); captureFirst = null }
+      setCapture(false)
+    }
+    return { ok: true }
+  }
   if (msg.type === 'osn:gamepad-capture-start') {
     capturing = true
+    if (captureFirst) { clearTimeout(captureFirst.timer); captureFirst = null }
     setCapture(true) // 让 exe 临时扫全部键，便于绑定任意手柄键/键盘键
     setTimeout(() => {
-      if (capturing) {
+      if (capturing && !captureFirst) {
         capturing = false
         setCapture(false)
         sendKbConfig()
@@ -173,6 +202,7 @@ export function handleGamepadCommand(msg) {
   }
   if (msg.type === 'osn:gamepad-capture-stop') {
     capturing = false
+    if (captureFirst) { clearTimeout(captureFirst.timer); captureFirst = null }
     setCapture(false)
     sendKbConfig()
     return { ok: true }
