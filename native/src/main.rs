@@ -1,21 +1,23 @@
-//! 一条龙清单 · 手柄遥控 native messaging host
+//! 一条龙清单 · 手柄/键盘遥控 native messaging host
 //!
-//! gilrs(DirectInput/HID) + XInput 双路读手柄并去重，把「原始按键事件」通过
-//! Native Messaging(4 字节小端长度 + JSON)写到 stdout 发给扩展。
+//! 三路读取并去重，把「原始按键事件」通过 Native Messaging(4 字节小端长度 + JSON)
+//! 写到 stdout 发给扩展；从 stdin 收扩展下发的配置(键盘白名单 / 捕获开关)。
+//!   - gilrs：DirectInput/HID 手柄(桌面物理手柄)
+//!   - XInput：轮询共享、不抢焦点——玩游戏时(手柄虚拟成 Xbox)后台也能读
+//!   - 键盘：GetAsyncKeyState 轮询系统级键状态，同样不抢焦点；**默认只查扩展下发的
+//!     白名单键**(不记录其他按键)，仅「捕获绑定」时临时扫全部键
 //! 所有映射 / 单双击判定 / 操作 B 站都在扩展端完成。
 //!
-//! ⚠️ 重要:Switch Pro / DualSense 等「非 XInput」手柄,玩游戏时前台游戏会独占
-//! DirectInput/HID,后台读不到。需用 BetterJoy / Steam Input 把它虚拟成 Xbox(XInput),
-//! XInput 是多进程共享、不抢焦点的,后台才能在游戏里也读到。详见 native/README.md。
-//!
-//! 编译:cargo xwin build --release(见 native/README.md)
+//! 编译：cargo xwin build --release(见 native/README.md)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gilrs::{EventType, Gilrs};
+use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::Input::XboxController::{XInputGetState, XINPUT_STATE};
 
 fn now_ms() -> u128 {
@@ -32,7 +34,7 @@ fn send(value: &serde_json::Value) {
     let _ = out.flush();
 }
 
-/// 去重发送:gilrs 与 XInput 可能读到同一手柄,60ms 内同一 (button,state) 只发一次。
+/// 去重发送:多路可能读到同一输入，60ms 内同一 (button,state) 只发一次。
 fn emit(button: &str, state: &str, code: &str, gamepad: &str, last: &mut HashMap<String, u128>, now: u128) {
     let key = format!("{button}|{state}");
     if let Some(&t) = last.get(&key) {
@@ -44,7 +46,7 @@ fn emit(button: &str, state: &str, code: &str, gamepad: &str, last: &mut HashMap
     }));
 }
 
-/// XInput 按钮位 → 与 gilrs 一致的名字(默认绑定按名字匹配,两路通用)。
+/// XInput 按钮位 → 与 gilrs 一致的名字。
 const XI_BUTTONS: &[(u16, &str)] = &[
     (0x0001, "DPadUp"), (0x0002, "DPadDown"), (0x0004, "DPadLeft"), (0x0008, "DPadRight"),
     (0x0010, "Start"), (0x0020, "Select"),
@@ -76,18 +78,75 @@ fn poll_xinput(prev: &mut [u16; 4], last: &mut HashMap<String, u128>, now: u128)
     }
 }
 
-fn main() {
-    // 扩展断开端口 → stdin EOF → 退出
-    thread::spawn(|| {
-        let mut buf = [0u8; 1024];
-        let mut stdin = io::stdin();
-        loop {
-            match stdin.read(&mut buf) {
-                Ok(0) | Err(_) => std::process::exit(0),
-                Ok(_) => {}
-            }
+/// 扩展下发的键盘配置。
+#[derive(Default)]
+struct KbConfig {
+    whitelist: HashSet<i32>,
+    capture: bool,
+}
+
+/// 键盘:GetAsyncKeyState 轮询。非捕获只查白名单,捕获时扫常用键范围。
+/// button 名用 "Key:{vk}"(十进制虚拟键码),扩展端据此绑定。
+fn poll_keyboard(cfg: &Arc<Mutex<KbConfig>>, prev: &mut HashSet<i32>, last: &mut HashMap<String, u128>, now: u128) {
+    let (mut keys, capture): (Vec<i32>, bool) = {
+        let c = cfg.lock().unwrap();
+        if c.capture {
+            ((0x08..=0xFE).collect(), true)
+        } else {
+            (c.whitelist.iter().copied().collect(), false)
         }
-    });
+    };
+    // 非捕获时仍要给"上一帧按着、现在移出白名单"的键补一个 up，避免卡住
+    if !capture {
+        for &vk in prev.iter() {
+            if !keys.contains(&vk) { keys.push(vk); }
+        }
+    }
+    for vk in keys {
+        let down = unsafe { GetAsyncKeyState(vk) } as u16 & 0x8000 != 0;
+        let was = prev.contains(&vk);
+        if down && !was {
+            prev.insert(vk);
+            emit(&format!("Key:{vk}"), "down", &format!("VK({vk})"), "Keyboard", last, now);
+        } else if !down && was {
+            prev.remove(&vk);
+            emit(&format!("Key:{vk}"), "up", &format!("VK({vk})"), "Keyboard", last, now);
+        }
+    }
+}
+
+fn main() {
+    let cfg = Arc::new(Mutex::new(KbConfig::default()));
+
+    // stdin:读 Native Messaging 帧 → 解析配置(键盘白名单/捕获开关);EOF 退出。
+    {
+        let cfg = cfg.clone();
+        thread::spawn(move || {
+            let mut stdin = io::stdin();
+            loop {
+                let mut len_buf = [0u8; 4];
+                if stdin.read_exact(&mut len_buf).is_err() { std::process::exit(0); }
+                let len = u32::from_le_bytes(len_buf) as usize;
+                if len == 0 || len > 1_000_000 { continue; }
+                let mut buf = vec![0u8; len];
+                if stdin.read_exact(&mut buf).is_err() { std::process::exit(0); }
+                if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&buf) {
+                    let mut c = cfg.lock().unwrap();
+                    match v.get("type").and_then(|t| t.as_str()) {
+                        Some("kb-config") => {
+                            if let Some(arr) = v.get("keys").and_then(|k| k.as_array()) {
+                                c.whitelist = arr.iter().filter_map(|x| x.as_i64().map(|n| n as i32)).collect();
+                            }
+                        }
+                        Some("capture") => {
+                            c.capture = v.get("on").and_then(|o| o.as_bool()).unwrap_or(false);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+    }
 
     let mut gilrs = match Gilrs::new() {
         Ok(g) => g,
@@ -101,11 +160,11 @@ fn main() {
 
     let mut last: HashMap<String, u128> = HashMap::new();
     let mut xi_prev = [0u16; 4];
+    let mut kb_prev: HashSet<i32> = HashSet::new();
 
     loop {
         let now = now_ms();
 
-        // gilrs（DirectInput/HID,适合桌面物理手柄)
         while let Some(ev) = gilrs.next_event() {
             let name = gilrs.connected_gamepad(ev.id).map(|g| g.name().to_string()).unwrap_or_default();
             match ev.event {
@@ -117,8 +176,8 @@ fn main() {
             }
         }
 
-        // XInput（轮询共享,玩游戏时后台也能读到虚拟 Xbox)
         poll_xinput(&mut xi_prev, &mut last, now);
+        poll_keyboard(&cfg, &mut kb_prev, &mut last, now);
 
         thread::sleep(Duration::from_millis(5));
     }

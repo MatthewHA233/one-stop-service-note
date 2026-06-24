@@ -520,6 +520,33 @@ p {
 }
 .danger-btn:hover { filter: brightness(1.05); }
 
+/* —— 手柄 / 键盘遥控设置面板 —— */
+.gp-card { max-width: 380px; display: grid; gap: 10px; }
+.gp-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.gp-sources { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--subtle); }
+.gp-sources label { display: inline-flex; align-items: center; gap: 4px; }
+.gp-hint { margin: 0; min-height: 16px; font-size: 12px; color: var(--muted); }
+.gp-rows { display: grid; gap: 8px; }
+.gp-row { display: grid; grid-template-columns: 64px 1fr 1fr; gap: 8px; align-items: center; }
+.gp-act { font-size: 13px; font-weight: 600; }
+.gp-bind {
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.gp-bind:hover { border-color: #ff9dbc; }
+.gp-bind.capturing { border-color: var(--accent); background: var(--accent-soft); color: #9f184a; }
+.gp-seconds { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--subtle); }
+.gp-seconds input { width: 60px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; }
+
 /* —— 提取预览里的游戏/账号选择，复用主页 chip 风格 —— */
 .field-block {
   display: grid;

@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 gilrs = "0.11"
 serde_json = "1"
-windows = { version = "0.62", features = ["Win32_UI_Input_XboxController"] }
+windows = { version = "0.62", features = ["Win32_UI_Input_XboxController", "Win32_UI_Input_KeyboardAndMouse"] }
 
 # 极小 exe：体积优先 + 去符号 + abort（无 unwind 表）
 [profile.release]
