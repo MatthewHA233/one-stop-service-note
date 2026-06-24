@@ -53,3 +53,14 @@ host → 扩展（stdout，每条 = 4 字节小端长度 + JSON）：
 ```
 
 `code` 是平台原始按键码，唯一、且包含扩展手柄/背键——扩展端「捕获绑定」用它，所以任意手柄任意键都能绑。
+
+## 玩游戏时：非 XInput 手柄必须虚拟成 Xbox（重要踩坑）
+
+实测结论：
+- **Switch Pro / DualSense** 等在 Windows 是 **DirectInput/HID** 设备。这类输入**前台游戏会独占**——玩游戏时焦点在游戏，本程序（后台）用 gilrs 就读不到了。
+- **XInput**（Xbox 手柄那套）不同：**多进程共享、不抢焦点**，游戏在读、本程序后台也能同时读到同一份状态。
+- 所以非 XInput 手柄要在游戏里也能遥控，必须先虚拟成 Xbox（XInput）：
+  - **BetterJoy / BetterJoyForCemu**（Switch Pro 实测可行，推荐）：把手柄常驻虚拟成 Xbox360。
+  - 或 Steam Input 的手柄配置支持。
+  - **Xbox 原生手柄**天然走 XInput，无需任何处理。
+- exe 同时跑 gilrs（HID）+ XInput 两路、60ms 去重；虚拟成 Xbox 后会以 `"gamepad":"XInput Controller 0"` 上报，后台/游戏前台都能读。
