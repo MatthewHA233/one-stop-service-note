@@ -2,13 +2,21 @@
 # 用法：在 native\ 目录下，先 `cargo xwin build --release`，再运行本脚本。
 $ErrorActionPreference = "Stop"
 
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$exe  = Join-Path $here "target\x86_64-pc-windows-msvc\release\osn-gamepad.exe"
+$here   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$built  = Join-Path $here "target\x86_64-pc-windows-msvc\release\osn-gamepad.exe"
+$binDir = Join-Path $here "bin"
+$exe    = Join-Path $binDir "osn-gamepad.exe"
 
-if (-not (Test-Path $exe)) {
-  Write-Error "未找到 exe，请先在 native\ 下运行：cargo xwin build --release`n期望路径：$exe"
+if (-not (Test-Path $built)) {
+  Write-Error "未找到编译产物，请先在 native\ 下运行：cargo xwin build --release`n期望路径：$built"
   exit 1
 }
+
+# 把编译产物复制到 target 外的固定位置(bin\)，manifest 指向这个副本。
+# 这样之后 cargo clean / 删 target 都不影响已注册的 host；bin\osn-gamepad.exe 也随源码提交进 git。
+Get-Process osn-gamepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+Copy-Item $built $exe -Force
 
 $hostName = "com.osn.gamepad"
 # 未打包扩展(load unpacked)的 ID 由加载路径派生、固定不变。

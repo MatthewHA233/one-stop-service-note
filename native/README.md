@@ -36,8 +36,12 @@ cd native
 .\install.ps1
 ```
 
-脚本会生成 `com.osn.gamepad.json` 并写入注册表
-`HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.osn.gamepad`，指向该 exe。
+脚本会：① 把编译产物**复制到 `native\bin\osn-gamepad.exe`**（target 外的固定位置，已随源码提交进 git）；
+② 生成 `com.osn.gamepad.json` 并写入注册表
+`HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.osn.gamepad`，**指向 bin 里的副本**。
+
+所以注册后可以随意 `cargo clean` / 删除整个 `target`，都不影响已注册的 host。`bin\osn-gamepad.exe`
+已提交，clone 下来即使不装 Rust 工具链，跑一次 `install.ps1` 就能注册使用。
 
 注意：`install.ps1` 里写死了扩展 ID（未打包扩展由加载路径派生、固定）。若你的扩展 ID 不同（见 `chrome://extensions`），改脚本顶部 `$extId` 再重跑。
 
