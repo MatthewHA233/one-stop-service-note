@@ -465,7 +465,7 @@ function renderAccountModal() {
         </div>
         <p class="muted">所属游戏：${escapeHtml(selectedGame?.name || '未选择')}</p>
         <label>账号名
-          <input id="newAccountName" placeholder="比如 大号 / 小号 / CHanGO" />
+          <input id="newAccountName" placeholder="比如 大号 / 小号" />
         </label>
         <button class="primary-btn" data-action="add-account">创建账号</button>
       </div>
