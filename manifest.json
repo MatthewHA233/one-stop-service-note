@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "一条龙任务清单",
+  "version": "0.1.0",
+  "description": "记录你已肝过的游戏「一条龙」攻略视频清单：按 游戏/账号/视频/分P 精细追踪进度。数据本地存储，可导入导出迁移。",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://api.bilibili.com/*", "https://www.bilibili.com/video/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "一条龙任务清单",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.bilibili.com/video/*"],
+      "js": ["src/content/progress.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

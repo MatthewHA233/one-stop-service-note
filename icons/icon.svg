@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="一条龙任务清单图标">
+  <defs>
+    <linearGradient id="bg" x1="22" y1="12" x2="108" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff6a9b"/>
+      <stop offset="1" stop-color="#e93f77"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#9f184a" flood-opacity=".28"/>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <path d="M30 36c0-7.2 5.8-13 13-13h36l20 20v48c0 7.2-5.8 13-13 13H43c-7.2 0-13-5.8-13-13V36Z" fill="#fff" filter="url(#shadow)"/>
+  <path d="M78 24v18c0 2.2 1.8 4 4 4h17" fill="#ffd9e5"/>
+  <path d="M53 52.5 65.5 60 53 67.5v-15Z" fill="#e93f77"/>
+  <path d="M39 79.5 45 85l10-13" fill="none" stroke="#e93f77" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M64 78h22M64 92h18" fill="none" stroke="#263447" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="92" cy="31" r="7" fill="#ffb3ca"/>
+</svg>
