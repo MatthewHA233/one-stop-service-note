@@ -8,6 +8,24 @@
 
   notifyVisit()
   setInterval(tick, 3000)
+  chrome.runtime.onMessage.addListener(handleGamepadAction)
+
+  // 手柄遥控：后退 / 前进 / 播放暂停，直接操作本页 video（B站在后台也生效）
+  function handleGamepadAction(msg) {
+    if (!msg || msg.type !== 'osn:gamepad-action') return
+    const video = document.querySelector('video')
+    if (!video) return
+    const sec = Number(msg.seconds) || 5
+    if (msg.action === 'rewind') {
+      video.currentTime = Math.max(0, video.currentTime - sec)
+    } else if (msg.action === 'forward') {
+      const dur = Number.isFinite(video.duration) ? video.duration : video.currentTime + sec
+      video.currentTime = Math.min(dur, video.currentTime + sec)
+    } else if (msg.action === 'toggle') {
+      if (video.paused) video.play()
+      else video.pause()
+    }
+  }
 
   function tick() {
     if (location.href !== lastUrl) notifyVisit()

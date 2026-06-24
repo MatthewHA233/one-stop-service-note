@@ -1,0 +1,4 @@
+# 固定交叉编译目标为 MSVC（配合 cargo-xwin，免装 Visual Studio）
+# 产物路径统一为 target/x86_64-pc-windows-msvc/
+[build]
+target = "x86_64-pc-windows-msvc"

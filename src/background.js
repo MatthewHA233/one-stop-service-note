@@ -1,5 +1,9 @@
 import { fetchVideoInfo, parseBvid } from './lib/bili.js'
 import { recordVideoVisit, updatePageWatchProgress, updateVideoSourceInfo } from './lib/storage.js'
+import { initGamepad, handleGamepadCommand } from './gamepad.js'
+
+initGamepad()
+chrome.runtime.onStartup.addListener(() => initGamepad())
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   const url = changeInfo.url || tab.url || ''
@@ -16,6 +20,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 async function handleMessage(msg) {
   if (!msg || typeof msg !== 'object') throw new Error('空消息')
+
+  const gp = handleGamepadCommand(msg)
+  if (gp !== null) return gp
 
   if (msg.type === 'osn:video-visit') {
     return recordVideoVisitAndSourceInfo(msg.url || '')

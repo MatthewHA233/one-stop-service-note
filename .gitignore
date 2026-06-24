@@ -13,3 +13,9 @@ Thumbs.db
 # 日志 / 临时
 *.log
 .tmp/
+
+# Rust 编译产物
+native/target/
+
+# native host 注册生成物（含本机绝对路径，由 install.ps1 生成）
+native/com.osn.gamepad.json
