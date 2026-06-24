@@ -161,9 +161,16 @@ fn main() {
     let mut last: HashMap<String, u128> = HashMap::new();
     let mut xi_prev = [0u16; 4];
     let mut kb_prev: HashSet<i32> = HashSet::new();
+    let mut last_ping = now_ms();
 
     loop {
         let now = now_ms();
+
+        // 心跳:定期发消息让 MV3 service worker 保活(否则空闲被回收 → port 断 → 本进程收到 EOF 退出)
+        if now.saturating_sub(last_ping) >= 20_000 {
+            last_ping = now;
+            send(&serde_json::json!({ "type": "ping" }));
+        }
 
         while let Some(ev) = gilrs.next_event() {
             let name = gilrs.connected_gamepad(ev.id).map(|g| g.name().to_string()).unwrap_or_default();

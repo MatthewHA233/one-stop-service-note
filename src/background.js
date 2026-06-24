@@ -4,6 +4,8 @@ import { initGamepad, handleGamepadCommand } from './gamepad.js'
 
 initGamepad()
 chrome.runtime.onStartup.addListener(() => initGamepad())
+// alarm 周期触发会唤醒被回收的 worker，借机重连 native host（兜底，心跳之外的第二道保险）
+chrome.alarms.onAlarm.addListener(a => { if (a.name === 'osn-gp-keepalive') initGamepad() })
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   const url = changeInfo.url || tab.url || ''

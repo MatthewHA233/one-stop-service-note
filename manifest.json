@@ -3,7 +3,7 @@
   "name": "一条龙任务清单",
   "version": "0.1.0",
   "description": "记录你已肝过的游戏「一条龙」攻略视频清单：按 游戏/账号/视频/分P 精细追踪进度。数据本地存储，可导入导出迁移。",
-  "permissions": ["storage", "tabs", "nativeMessaging"],
+  "permissions": ["storage", "tabs", "nativeMessaging", "alarms"],
   "host_permissions": ["https://api.bilibili.com/*", "https://www.bilibili.com/video/*"],
   "background": {
     "service_worker": "src/background.js",

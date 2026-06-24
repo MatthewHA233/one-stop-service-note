@@ -33,6 +33,8 @@ const keyState = {} // 按 code 记单/双击/长按的时序状态
 export async function initGamepad() {
   if (initialized) { connect(); return }
   initialized = true
+  // 兜底:每分钟唤醒 worker 检查连接(万一 worker 被回收,alarm 能把它叫醒重连)
+  chrome.alarms.create('osn-gp-keepalive', { periodInMinutes: 1 })
   config = await loadConfig()
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes[CONFIG_KEY]) {
@@ -88,6 +90,7 @@ const isKeyboardEvent = msg => msg.gamepad === 'Keyboard' || String(msg.button |
 function onHostMessage(msg) {
   if (!msg) return
   if (msg.type === 'ready') { sendKbConfig(); return }
+  if (msg.type === 'ping') return // 心跳:收到即保活 worker，无需处理
   if (msg.type !== 'button') return
 
   // 捕获模式：监听单击/双击，回传 popup 用于绑定
